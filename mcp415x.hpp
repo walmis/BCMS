@@ -11,13 +11,13 @@
 template <typename Spi, typename Cs>
 class MCP4151 {
 public:
-	MCP4151() {
-		Cs::set();
+	void init() {
+		Cs::setOutput(1);
 
 		setValue(127);
 	}
 
-	MCP4151& operator++() {
+	MCP4151& operator++(int i) {
 		Cs::reset();
 		Spi::write(0b00000100);
 		Cs::set();
@@ -25,10 +25,10 @@ public:
 		if(value < 0x100)
 			value++;
 
-		return this;
+		return *this;
 	}
 
-	MCP4151& operator--() {
+	MCP4151& operator--(int i) {
 		Cs::reset();
 		Spi::write(0b00001000);
 		Cs::set();
@@ -36,7 +36,7 @@ public:
 		if(value > 0) {
 			value--;
 		}
-		return this;
+		return *this;
 	}
 
 	void setValue(uint8_t v) {
@@ -46,6 +46,10 @@ public:
 		Cs::set();
 
 		value = v;
+	}
+
+	uint16_t getValue() {
+		return value;
 	}
 
 
