@@ -9,13 +9,13 @@
 #include <lpc17xx_pinsel.h>
 
 #include <xpcc/architecture.hpp>
-#include <xpcc/workflow.hpp>
+#include <xpcc/processing.hpp>
 #include <xpcc/debug.hpp>
 
 #include <xpcc/driver/connectivity/usb/USBDevice.hpp>
-#include <xpcc/driver/ui/display.hpp>
+#include <xpcc/driver/display.hpp>
 
-#include <xpcc/driver/ui/button_group.hpp>
+#include <xpcc/ui/button_group.hpp>
 #include <xpcc/math.hpp>
 #include "Filters.h"
 
@@ -25,8 +25,9 @@
 #include "battery.hpp"
 #include "charger.hpp"
 #include "smt160.hpp"
-#include "sd/SDCard.h"
 
+#include "sd/SDIO.hpp"
+#include "sd/USBMSD_SDHandler.hpp"
 
 using namespace xpcc;
 using namespace xpcc::lpc17;
@@ -36,13 +37,25 @@ const char fwversion[16] __attribute__((used, section(".fwversion"))) = "v0.1";
 #include "pindefs.hpp"
 
 
-Hd44780<lcd_e, lcd_rw, lcd_rs, lcd_data> display(16, 2);
+Hd44780<lcd_data, lcd_rw, lcd_rs, lcd_e> display(16, 2);
 
 Battery battery;
 Discharger discharger;
 Charger charger;
 
-SDCard<lpc17::SpiMaster0, sdCs> sdCard;
+
+//xpcc::USBSerial device(0xffff);
+
+SDIOAsync<lpc17::SpiMaster0, sdCs> sdCard;
+
+USBCDCMSD<USBMSD_SDHandler<typeof(sdCard)>> device(0xffff, 0x0001, 0);
+
+xpcc::log::Logger xpcc::log::debug(device);
+xpcc::log::Logger xpcc::log::error(device);
+
+xpcc::IOStream serial(device);
+
+fat::FileSystem fs(&sdCard, 0);
 
 class UARTDevice : public IODevice {
 
@@ -102,12 +115,12 @@ void boot_jump( uint32_t address ){
 }
 
 
-xpcc::USBSerial device(0xffff);
 
-xpcc::IOStream serial(device);
+
+
 
 //UARTDevice uart(115200);
-xpcc::log::Logger xpcc::log::debug(device);
+
 //xpcc::log::Logger xpcc::log::debug(uart);
 
 
@@ -124,30 +137,30 @@ void Hard_Fault_Handler(uint32_t stack[]) {
 
 	//register uint32_t* stack = (uint32_t*)__get_MSP();
 
-	XPCC_LOG_DEBUG .printf("Hard Fault\n");
+	//XPCC_LOG_DEBUG .printf("Hard Fault\n");
 
-	XPCC_LOG_DEBUG .printf("r0  = 0x%08x\n", stack[r0]);
-	XPCC_LOG_DEBUG .printf("r1  = 0x%08x\n", stack[r1]);
-	XPCC_LOG_DEBUG .printf("r2  = 0x%08x\n", stack[r2]);
-	XPCC_LOG_DEBUG .printf("r3  = 0x%08x\n", stack[r3]);
-	XPCC_LOG_DEBUG .printf("r12 = 0x%08x\n", stack[r12]);
-	XPCC_LOG_DEBUG .printf("lr  = 0x%08x\n", stack[lr]);
-	XPCC_LOG_DEBUG .printf("pc  = 0x%08x\n", stack[pc]);
-	XPCC_LOG_DEBUG .printf("psr = 0x%08x\n", stack[psr]);
+//	XPCC_LOG_DEBUG .printf("r0  = 0x%08x\n", stack[r0]);
+//	XPCC_LOG_DEBUG .printf("r1  = 0x%08x\n", stack[r1]);
+//	XPCC_LOG_DEBUG .printf("r2  = 0x%08x\n", stack[r2]);
+//	XPCC_LOG_DEBUG .printf("r3  = 0x%08x\n", stack[r3]);
+//	XPCC_LOG_DEBUG .printf("r12 = 0x%08x\n", stack[r12]);
+//	XPCC_LOG_DEBUG .printf("lr  = 0x%08x\n", stack[lr]);
+//	XPCC_LOG_DEBUG .printf("pc  = 0x%08x\n", stack[pc]);
+//	XPCC_LOG_DEBUG .printf("psr = 0x%08x\n", stack[psr]);
 
 	display.clear();
 	display.setCursor(0, 0);
-	display.printf("Fault\n");
+	display.printf("Fault lr:%x\n", stack[lr]);
 	display.printf("pc=0x%08x", stack[pc]);
 
-	while(1) {
-		if(!progPin::read()) {
-			for(int i = 0; i < 10000; i++) {}
-			NVIC_SystemReset();
-		}
-	}
+	while(1);
+//	while(1) {
+//		if(!progPin::read()) {
+//			for(int i = 0; i < 10000; i++) {}
+//			NVIC_SystemReset();
+//		}
+//	}
 }
-
 
 
 class ButtonTask : TickerTask {
@@ -168,6 +181,7 @@ public:
 protected:
 	void handleTick() override {
 		static PeriodicTimer<> t(10);
+
 		if(t.isExpired()) {
 			buttons.update(buttonsNibble::read());
 		}
@@ -205,9 +219,6 @@ protected:
 
 
 void sysTick() {
-	LPC_WDT->WDFEED = 0xAA;
-	LPC_WDT->WDFEED = 0x55;
-
 
 	if(btn_left::read() == 0 && btn_up::read() == 0) {
 		//NVIC_SystemReset();
@@ -228,7 +239,7 @@ void sysTick() {
 }
 
 #define CMD(i, name) (strcmp(argv[i], name) == 0)
-
+static ProfileTimer tmr;
 class Terminal : xpcc::TickerTask {
 	char buffer[32];
 	uint8_t pos = 0;
@@ -246,7 +257,6 @@ class Terminal : xpcc::TickerTask {
 			pos &= 31;
 		}
 	}
-
 
 	void handleCommand(uint8_t nargs, char* argv[]) {
 		//XPCC_LOG_DEBUG .printf("nargs %d %s\n", nargs, argv[0]);
@@ -322,21 +332,74 @@ class Terminal : xpcc::TickerTask {
 				//serial << powf(battery.staticResistance, 2);
 			}
 		} else
-			if(CMD(0, "sdtest")) {
-				sdCard.disk_initialize();
+			if(CMD(0, "sdinit")) {
+				sdCard.initialise();
 			}
 			else if(CMD(0, "sdread")) {
 				uint8_t buffer[512];
 
-				int status = sdCard.disk_read(buffer, 0);
+				int status = 0;
+
+				status = sdCard.readStart(0);
 				if(status) {
+					status = sdCard.readData(buffer, 512);
+				}
+				sdCard.readStop();
+
+				//= sdCard.disk_read(buffer, 0);
+				if(!status) {
 					XPCC_LOG_DEBUG .printf("read failed\n");
 				}else{
 					XPCC_LOG_DEBUG .dump_buffer(buffer, 512);
 				}
 			}
 
-	}
+			else if(CMD(0, "sdrs")) {
+				if(!sdCard.readStart(0)) return;
+			}
+			else if(CMD(0, "sdrw")) {
+				sdCard.readStop();
+			}
+			else if(CMD(0, "sdra")) {
+				uint8_t*buffer = new uint8_t[512];
+				tmr.start();
+				sdCard.readAsync(buffer, 512).attach([buffer](void) {
+					tmr.end();
+					XPCC_LOG_DEBUG .printf("read complete %x\n", buffer);
+
+					XPCC_LOG_DEBUG .dump_buffer(buffer, 512);
+					//sdCard.readStop();
+
+				});
+
+			} else if(CMD(0, "sdwr")) {
+				sdCard.writeStart(0, 100);
+				for(int i = 0; i < 100; i++) {
+					sdCard.writeData(0);
+				}
+
+
+				sdCard.writeStop();
+
+				//sdCard.writeBlock(0, 0);
+				//sdCard.writeBlock(2, 0);
+
+//				sdCard.writeBlockAsync(0, 0).attach([](void){
+//					XPCC_LOG_DEBUG .printf("write finished\n");
+//				});
+
+			} else if(CMD(0, "mount")) {
+				XPCC_LOG_DEBUG.printf("testing mount\n");
+				//char str[12];
+				///XPCC_LOG_DEBUG .printf("%d\n", f_getlabel("", str, 0));
+
+				fat::File f;
+				XPCC_LOG_DEBUG .printf("%d\n", f.open("/miau.txt", "w"));
+				f << "Helllllooooo world\n";
+
+			}
+		}
+
 
 
 private:
@@ -569,29 +632,36 @@ void idleTask() {
 
 	static PeriodicTimer<> t(250);
 
-	if(t.isExpired()) {
+	LPC_WDT->WDFEED = 0xAA;
+	LPC_WDT->WDFEED = 0x55;
 
+	static uint8_t count = 0;
+
+	if(t.isExpired()) {
 		display.setCursor(0, 0);
 		display.printf("%.3fV %.2fA ", battery.getVoltage(), battery.getCurrent());
 
 
 		display.setCursor(0, 1);
-		display.printf("%.1fA %.1fC", discharger.getCurrent(),
-				discharger.getTemperature());
+		display.printf("%.1fA %.1fC %d", discharger.getCurrent(),
+				discharger.getTemperature(), count++);
 
 	}
 }
 
 
-
 int main() {
-	NVIC_SetVTOR(0x1000);
+
+	display.initialize();
+	display.clear();
+	display.printf("BCMS %s", fwversion);
 
 	lpc17::SysTickTimer::enable();
 	lpc17::SysTickTimer::attachInterrupt(sysTick);
 
 	xpcc::Random::seed();
 
+	device.msd.assignCard(sdCard);
 
 	SpiMaster0::initialize(SpiMaster0::Mode::MODE_0, 1000000);
 	Pinsel::setFunc(0, 15, 2); //SCK0
@@ -611,9 +681,7 @@ int main() {
 
 	NVIC_SetPriority(USB_IRQn, 16);
 
-	display.initialize();
-	display.clear();
-	display.printf("BCMS %s", fwversion);
+
 
 	ADC::init(20000);
 	ADC::burstMode(true);
@@ -625,7 +693,6 @@ int main() {
 
 	GpioInterrupt::enableGlobalInterrupts();
 
-	//sdCard.disk_initialize();
 
 	TickerTask::tasksRun(idleTask);
 }

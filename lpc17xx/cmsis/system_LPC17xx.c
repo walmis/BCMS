@@ -270,7 +270,7 @@
 
 
 /* PLL0CFG defines */
-#define	PLL0CFG_MSEL 0, 15
+#define PLL0CFG_MSEL 0, 15
 #define PLL0CFG_NSEL 16, 8
 
 #define __S(offset, size, val) ((val << offset) & ((1<<size)-1)<<offset)
@@ -330,11 +330,43 @@
  */
  
  
+#define CLKSRCSEL_Val         0x00000001
+
+#if CLKSRCSEL_Val == 1
 //xtal 16mhz
 #define M 18
 #define N 2
-#define CLKDIV 6
 
+#define FREQ_SEL 96
+
+#if FREQ_SEL == 48
+#define CLKDIV 6 //48MHz
+#define FLASHCFG_Val          0x0000203A
+#elif FREQ_SEL == 72
+#define CLKDIV 4 //72MHz
+#define FLASHCFG_Val          0x0000303A
+#elif FREQ_SEL == 96
+#define FLASHCFG_Val          0x0000403A
+#define CLKDIV 3 //96MHz
+#endif
+
+#endif
+
+#if CLKSRCSEL_Val == 0
+#define M 50
+#define N 2
+
+#define FREQ_SEL 50
+
+#if FREQ_SEL == 50
+#define CLKDIV 4 //48MHz
+#define FLASHCFG_Val          0x0000203A
+#elif FREQ_SEL == 100
+#define CLKDIV 2 //72MHz
+#define FLASHCFG_Val          0x0000303A
+
+#endif
+#endif
 
 #define CLOCK_SETUP           1
 #define SCS_Val               (1<<5)  // main oscillator range is 1Mhz - 20Mhz (16Mhz), main oscillator enabled
@@ -405,10 +437,6 @@
 
 #if (CHECK_RSVD((PLL1CFG_Val),   ~0x0000007F))
    #error "PLL1CFG: Invalid values of reserved bits!"
-#endif
-
-#if ((CCLKCFG_Val != 0) && (((CCLKCFG_Val - 1) % 2)))
-   #error "CCLKCFG: CCLKSEL field does not contain only odd values or 0!"
 #endif
 
 #if (CHECK_RSVD((USBCLKCFG_Val), ~0x0000000F))
