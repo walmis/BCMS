@@ -123,6 +123,8 @@ public:
 		//t.start();
 		XPCC_LOG_DEBUG .printf("OP:start read\n");
 		waitStartByte = true;
+		started = false;
+
 		Cs::reset();
 	}
 
@@ -134,16 +136,15 @@ protected:
 			if(Spi::write(0xFF) == 0xFE) {
 				waitStartByte = false;
 			}
-		}
-		if(!waitStartByte) {
-			if(!Spi::isRunning()) {
-				//t.end();
-				XPCC_LOG_DEBUG .printf("spi transfer\n");
+		} else {
+			if(!started) {
+				//XPCC_LOG_DEBUG .printf("spi transfer\n");
 				Spi::transfer(0, buffer, length);
-			}
+				started = true;
+			} else
 			if(Spi::isFinished()) {
 				//finish read
-				XPCC_LOG_DEBUG .printf("OP:finish read\n");
+				//XPCC_LOG_DEBUG .printf("OP:finish read\n");
 				Spi::write(0xFF); // checksum
 				Spi::write(0xFF);
 
@@ -159,6 +160,7 @@ protected:
 	size_t length;
 
 	bool waitStartByte;
+	bool started;
 
 };
 
