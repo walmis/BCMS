@@ -32,19 +32,28 @@ class SDIOAsync : public SDCardAsync<Spi,Cs>, public xpcc::fat::PhysicalVolume {
 	doRead(uint8_t *buffer, int32_t sectorNumber, uint32_t sectorCount) override {
 		XPCC_LOG_DEBUG .printf("%s(%d, %d)\n", __FUNCTION__, sectorNumber, sectorCount);
 
+		if(this->isOpInprogress()) {
+			return RES_ERROR;
+		}
+
 		if(sectorCount == 1) {
+			XPCC_LOG_DEBUG .printf("read single block\n");
 			if(this->readSingleBlock(buffer, sectorNumber)) {
 				//XPCC_LOG_DEBUG .dump_buffer(buffer, 512);
 				return RES_OK;
 			}
-			return RES_ERROR;
 		}
 
+		return RES_ERROR;
 	}
 
 	xpcc::fat::Result
 	doWrite(const uint8_t *buffer, int32_t sectorNumber, uint32_t sectorCount) override {
 		XPCC_LOG_DEBUG .printf("%s(%d, %d)\n", __FUNCTION__, sectorNumber, sectorCount);
+
+		if(this->isOpInprogress()) {
+			return RES_ERROR;
+		}
 
 		if(sectorCount == 1) {
 			if(this->writeBlock(sectorNumber, buffer)) {
@@ -54,7 +63,6 @@ class SDIOAsync : public SDCardAsync<Spi,Cs>, public xpcc::fat::PhysicalVolume {
 			}
 
 		}
-
 
 		return RES_ERROR;
 	}

@@ -121,8 +121,9 @@ public:
 	SD_READ_DATA(uint8_t* buffer, size_t length) :
 		buffer(buffer), length(length){
 		//t.start();
-		XPCC_LOG_DEBUG .printf("OP:start read\n");
+		//XPCC_LOG_DEBUG .printf("OP:start read\n");
 		waitStartByte = true;
+		//waitStartByte = false;
 		started = false;
 
 		Cs::reset();
@@ -138,16 +139,17 @@ protected:
 			}
 		} else {
 			if(!started) {
-				//XPCC_LOG_DEBUG .printf("spi transfer\n");
-				Spi::transfer(0, buffer, length);
+				//XPCC_LOG_DEBUG .printf("OP:start spi transfer\n");
 				started = true;
+				Spi::transfer(0, buffer, length);
+
 			} else
 			if(Spi::isFinished()) {
 				//finish read
-				//XPCC_LOG_DEBUG .printf("OP:finish read\n");
+				//XPCC_LOG_DEBUG .printf("OP:finish transfer\n");
 				Spi::write(0xFF); // checksum
 				Spi::write(0xFF);
-
+//
 				Cs::set();
 				Spi::write(0xFF);
 
@@ -155,6 +157,7 @@ protected:
 			}
 		}
 	}
+
 	//xpcc::ProfileTimer t;
 	uint8_t* buffer;
 	size_t length;
@@ -277,10 +280,10 @@ public:
 		op = 0;
 	}
 
-	inline bool isBusy() {
-		return op != 0;
+	inline bool isOpInprogress() {
+		XPCC_LOG_DEBUG .printf("test %d %d %d\n", op!=0, !Cs::read(), this->cardLocked.test());
+		return op != 0 || !Cs::read() || this->cardLocked.test();
 	}
-
 
 	xpcc::FunctionPointer& readAsync(uint8_t* buffer, size_t length) {
 		if(op) {
@@ -302,6 +305,13 @@ public:
 		callback.attach(0);
 
 		return callback;
+	}
+
+	void waitCardNotBusy() {
+		while(isOpInprogress()) {
+			XPCC_LOG_DEBUG.printf("still busy\n");
+			handleTick();
+		}
 	}
 
 protected:

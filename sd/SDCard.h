@@ -189,9 +189,11 @@ public:
 	}
 
 	bool initialise() {
-		PROFILE();
+
 		if(initialized)
 			return true;
+
+		PROFILE();
 
 		int i = initialise_card();
 		XPCC_LOG_DEBUG.printf("init card = %d\n", i);
@@ -212,11 +214,14 @@ public:
 		initialized = true;
 
 		onInitialized();
+		cardLocked.reset();
 
 		return true;
 	}
 
 	virtual void onInitialized() {	}
+
+	xpcc::atomic::Flag cardLocked;
 
 	//------------------------------------------------------------------------------
 	/** Begin a read multiple blocks sequence.
@@ -228,6 +233,8 @@ public:
 		//PROFILE();
 		//SD_TRACE("RS", blockNumber);
 		//if (type()!= SD_CARD_TYPE_SDHC) blockNumber <<= 9;
+		cardLocked.set();
+
 		if (_cmd(18, blockNumber * cdv) != 0) {
 			initialized = false;
 			XPCC_LOG_DEBUG.printf("SD_CARD_ERROR_CMD18\n");
@@ -243,7 +250,11 @@ public:
 	 */
 	bool readStop() {
 		//PROFILE();
+
 		Cs::reset();
+
+		cardLocked.reset();
+
 		if (_cmd(12, 0) == -1) {
 			goto fail;
 		}
@@ -261,6 +272,7 @@ public:
 	bool readSingleBlock(uint8_t* buffer, size_t block_number) {
 
 		if (_cmd(17, block_number * cdv) != 0) {
+			XPCC_LOG_DEBUG .printf("readSingleBlock cmd17 failed\n");
 			return false;
 		}
 
@@ -283,6 +295,7 @@ public:
 		//SD_TRACE("WS", blockNumber);
 		// send pre-erase count
 		PROFILE();
+		cardLocked.set();
 		if (_acmd(23, eraseCount) != 0) {
 			XPCC_LOG_DEBUG.printf("SD_CARD_ERROR_ACMD23\n");
 			goto fail;
@@ -295,7 +308,9 @@ public:
 		Cs::set();
 		return true;
 
-		fail: Cs::set();
+		fail:
+		initialized = false;
+		Cs::set();
 		return false;
 	}
 	//------------------------------------------------------------------------------
@@ -308,6 +323,7 @@ public:
 		PROFILE();
 		Cs::reset();
 
+
 		if (!waitNotBusy(SD_WRITE_TIMEOUT))
 			goto fail;
 
@@ -316,11 +332,14 @@ public:
 		if (!waitNotBusy(SD_WRITE_TIMEOUT))
 			goto fail;
 		Cs::set();
+		cardLocked.reset();
 		return true;
 
 		fail:
-		XPCC_LOG_DEBUG.printf("SD_CARD_ERROR_STOP_TRAN\n");
-		Cs::set();
+			initialized = false;
+			XPCC_LOG_DEBUG.printf("SD_CARD_ERROR_STOP_TRAN\n");
+			Cs::set();
+			cardLocked.reset();
 		return false;
 	}
 
@@ -342,6 +361,7 @@ public:
 		return true;
 
 		fail:
+		initialized = false;
 		XPCC_LOG_DEBUG.printf("SD_CARD_ERROR_WRITE_MULTIPLE\n");
 		Cs::set();
 		return false;
@@ -380,7 +400,7 @@ protected:
 		return _cmd(cmd, arg);
 	}
 
-	int _cmd(int cmd, int arg);
+	int _cmd(int cmd, int arg, int timeout = SD_COMMAND_TIMEOUT);
 	int _cmd8();
 	int _cmd58();
 	int initialise_card();
@@ -389,7 +409,7 @@ protected:
 
 
 
-	bool initialized = true;
+	bool initialized;
 
 	static uint32_t ext_bits(unsigned char* data, int msb, int lsb);
 
@@ -408,6 +428,7 @@ inline bool SDCard<Spi, Cs>::readData(uint8_t* buffer, size_t length) {
 	xpcc::Timeout<> t(100);
 	while (Spi::write(0xFF) != 0xFE) {
 		if (t.isExpired()) {
+			initialized = false;
 			return false;
 		}
 	}
@@ -444,7 +465,9 @@ inline bool SDCard<Spi, Cs>::writeData(uint8_t token, const uint8_t* src) {
 		goto fail;
 	}
 	return true;
-	fail: Cs::set();
+	fail:
+	initialized = false;
+	Cs::set();
 	return false;
 }
 
@@ -476,11 +499,12 @@ inline bool SDCard<Spi, Cs>::writeBlock(uint32_t blockNumber,
 	fail:
 	Cs::set();
 	Spi::write(0xFF);
+	initialized = false;
 	return false;
 }
 
 template<typename Spi, typename Cs>
-inline int SDCard<Spi, Cs>::_cmd(int cmd, int arg) {
+inline int SDCard<Spi, Cs>::_cmd(int cmd, int arg, int timeout) {
 	//PROFILE();
 	Cs::reset();
 
@@ -495,13 +519,13 @@ inline int SDCard<Spi, Cs>::_cmd(int cmd, int arg) {
 	Spi::write(0x95);
 	//XPCC_LOG_DEBUG.printf("_cmd(%d, %x) = ", cmd, arg);
 	// wait for the repsonse (response[7] == 0)
-	xpcc::Timeout<> t(SD_COMMAND_TIMEOUT);
+	xpcc::Timeout<> t(timeout);
 	while (!t.isExpired()) {
 		int response = Spi::write(0xFF);
 		if (!(response & 0x80)) {
 			Cs::set();
 			Spi::write(0xFF);
-			XPCC_LOG_DEBUG.printf("_cmd(%d, %x) = %d\n", cmd, arg, response);
+			//XPCC_LOG_DEBUG.printf("_cmd(%d, %x) = %d\n", cmd, arg, response);
 			return response;
 		}
 	}
@@ -585,7 +609,7 @@ inline int SDCard<Spi, Cs>::initialise_card() {
 	for (int i = 0; i < 32; i++) {
 		Spi::write(0xFF);
 	}
-	uint8_t s = _cmd(0, 0);
+	uint8_t s = _cmd(0, 0, 10);
 	XPCC_LOG_DEBUG.printf("_cmd(0, 0) = %x\n", s);
 	// send CMD0, should return with all zeros except IDLE STATE set (bit 0)
 	if (s != R1_IDLE_STATE) {
