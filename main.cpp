@@ -26,6 +26,7 @@
 #include "battery.hpp"
 #include "charger.hpp"
 #include "smt160.hpp"
+#include "CycleManager.hpp"
 
 #include "sd/SDIO.hpp"
 #include "sd/USBMSD_SDHandler.hpp"
@@ -41,9 +42,12 @@ const char fwversion[16] __attribute__((used, section(".fwversion"))) = "v0.1";
 //Hd44780<lcd_data, lcd_rw, lcd_rs, lcd_e> display(16, 2);
 
 Hd44780<lcd_e, lcd_rw, lcd_rs, lcd_data> display(16, 2);
+
 Battery battery;
 Discharger discharger;
 Charger charger;
+
+CycleManager manager;
 
 //xpcc::USBSerial device(0xffff);
 
@@ -199,6 +203,7 @@ protected:
 		}
 		if(buttons.isPressed(BUTTON_RIGHT)) {
 			//XPCC_LOG_DEBUG .printf("inc %d\n", voltagePot.getValue());
+			manager.stop();
 		}
 
 		if(buttons.isPressed(BUTTON_UP)) {
@@ -209,15 +214,9 @@ protected:
 		}
 
 		if(buttons.isPressed(BUTTON_DOWN)) {
-			//dischargerEn::toggle();
-			//fanEn::toggle();
-			discharger.enable(true);
-			discharger.setOutput(2); //5A
+			manager.startCycle(CycleManager::DISCHARGE);
 		}
-
 	}
-
-
 };
 
 #define NOM(x) ((int)x)
@@ -337,6 +336,12 @@ protected:
 				}
 			}
 
+			int num;
+			sscanf("charge_123.csv", "charge_%d.csv", &num);
+
+			XPCC_LOG_DEBUG.printf("scan %d\n", num);
+
+
 			dir.close();
 		}
 	}
@@ -375,12 +380,12 @@ void idleTask() {
 		}
 
 
-		display.setCursor(0, 0);
-		display.printf("%.3fV %.2fA ", battery.getVoltage(), battery.getCurrent());
-
-		display.setCursor(0, 1);
-		display.printf("%.1fA %.1fC", discharger.getCurrent(),
-				discharger.getTemperature());
+//		display.setCursor(0, 0);
+//		display.printf("%.3fV %.2fA ", battery.getVoltage(), battery.getCurrent());
+//
+//		display.setCursor(0, 1);
+//		display.printf("%.1fA %.1fC", discharger.getCurrent(),
+//				discharger.getTemperature());
 
 	}
 }
@@ -427,6 +432,6 @@ int main() {
 	discharger.init();
 	charger.init();
 
-
+	//display.clear();
 	TickerTask::tasksRun(idleTask);
 }

@@ -281,7 +281,7 @@ public:
 	}
 
 	inline bool isOpInprogress() {
-		XPCC_LOG_DEBUG .printf("test %d %d %d\n", op!=0, !Cs::read(), this->cardLocked.test());
+		//XPCC_LOG_DEBUG .printf("test %d %d %d\n", op!=0, !Cs::read(), this->cardLocked.test());
 		return op != 0 || !Cs::read() || this->cardLocked.test();
 	}
 

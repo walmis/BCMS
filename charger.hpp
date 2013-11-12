@@ -27,6 +27,8 @@ public:
 		currentSetpoint = 0;
 		constantVoltage = false;
 		cutoffVoltage = 3.60;
+		cutoffCurrent = 1.0;
+		fullyCharged = false;
 	}
 	void init() {
 		psuEn::setOutput(false);
@@ -59,17 +61,23 @@ public:
 
 						setValue(100 + (int) roundf(pid.getValue()));
 					}
+				} else {
+					if(battery.getCurrent() < cutoffCurrent) {
+						fullyCharged = true;
+						enable(false);
+					}
 				}
 			}
 
-			//XPCC_LOG_DEBUG .printf("set %.3f cyr %.3f\n", currentSetpoint, battery.getCurrent());
-			//
-			//XPCC_LOG_DEBUG. printf("last err: %.5f\n", pid.getLastError());
-			//XPCC_LOG_DEBUG. printf("last errsum: %.5f\n", pid.getErrorSum());
-
-			//
-
 		}
+	}
+
+	bool isChargeComplete() {
+		if(fullyCharged) {
+			fullyCharged = false;
+			return true;
+		}
+		return false;
 	}
 
 	void enable(bool en = true) {
@@ -95,13 +103,14 @@ public:
 		voltagePot.setValue(value);
 	}
 
-
-//private:
-	bool enabled;
-
 	MCP4151<lpc17::SpiMaster1, pot_cs> voltagePot;
-	float cutoffVoltage;
 
+private:
+	bool enabled;
+	bool fullyCharged;
+
+	float cutoffCurrent;
+	float cutoffVoltage;
 	float currentSetpoint;
 
 	Pid<float, 1> pid;

@@ -48,16 +48,17 @@ protected:
 
     void handleTick() override {
 
-    	if(requestedBlock != -1 && haveBlock == -1 && readingBlock == -1) {
+		if (requestedBlock != -1 && haveBlock == -1 && readingBlock == -1
+				&& !card->isOpInprogress()) {
 			bool res;
-    		if(opType == READ) {
-    			if(!card->readStart(requestedBlock)) {
-    				disk_read_finalize(false);
-    				requestedBlock = -1;
-    				return;
-    			}
+			if (opType == READ) {
+				if (!card->readStart(requestedBlock)) {
+					disk_read_finalize(false);
+					requestedBlock = -1;
+					return;
+				}
 
-			} else if(opType == WRITE) {
+			} else if (opType == WRITE) {
 				card->writeStart(requestedBlock, totalBlocks);
 			}
 
@@ -67,7 +68,7 @@ protected:
     	}
 
     	//if(requestedBlock != -1 && v.isExpired()){
-    	if(haveBlock == requestedBlock && requestedBlock != -1) {
+    	if(haveBlock == requestedBlock && requestedBlock != -1 ) {
     		//xpcc::atomic::Lock lock;
     		memcpy(dataptr, buffer, 512);
 
