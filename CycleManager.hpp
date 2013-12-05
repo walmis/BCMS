@@ -143,8 +143,8 @@ public:
 		if(type == DISCHARGE) {
 			charger.enable(false);
 
-			discharger.setOutput(15.0);
 			discharger.enable(true);
+			discharger.setOutput(40.0);
 		}
 
 
@@ -213,9 +213,9 @@ private:
 				if(cycle == DISCHARGE) {
 
 					display.printf("Dischg #%03d\n", cycleNumber);
-					display.printf("%.3fV %.1fA %.0fC", battery.getVoltage(),
+					display.printf("%.3fV %.1fA %dC", battery.getVoltage(),
 							discharger.getCurrent(),
-							discharger.getTemperature());
+							(int)roundf(discharger.getTemperature()));
 
 				}
 

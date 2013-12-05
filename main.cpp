@@ -20,6 +20,7 @@
 #include "Filters.h"
 
 #include <malloc.h>
+#include <math.h>
 
 #include "terminal.hpp"
 #include "discharger.hpp"
