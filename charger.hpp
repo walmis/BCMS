@@ -21,6 +21,7 @@ using namespace xpcc::lpc17;
 
 class Charger : TickerTask {
 public:
+	uint8_t chargeCurrent;
 
 	Charger() : pid(0.07, 0.4, 0.0, 2000.0, 148.0) {
 		enabled = false;
@@ -29,6 +30,7 @@ public:
 		cutoffVoltage = 3.60;
 		cutoffCurrent = 1.0;
 		fullyCharged = false;
+		chargeCurrent = 30;
 	}
 	void init() {
 		psuEn::setOutput(false);
@@ -38,6 +40,7 @@ public:
 
 	void handleTick() override {
 		static PeriodicTimer<> t(100);
+		static PeriodicTimer<> adj_timer(5000);
 
 		if(t.isExpired()) {
 
@@ -62,6 +65,15 @@ public:
 						setValue(100 + (int) roundf(pid.getValue()));
 					}
 				} else {
+
+					if(adj_timer.isExpired()) {
+						if(battery.getVoltage() > cutoffVoltage*1.01) {
+							//XPCC_LOG_DEBUG .printf("--\n");
+							voltagePot--;
+						}
+					}
+					//XPCC_LOG_DEBUG .printf("current %d\n", (int)battery.getCurrent());
+
 					if(battery.getCurrent() < cutoffCurrent) {
 						fullyCharged = true;
 						enable(false);
@@ -74,7 +86,6 @@ public:
 
 	bool isChargeComplete() {
 		if(fullyCharged) {
-			fullyCharged = false;
 			return true;
 		}
 		return false;
@@ -85,13 +96,13 @@ public:
 		if(en) {
 			psuEn::set();
 			fanEn::set();
+			fullyCharged = false;
+			constantVoltage = false;
 		} else {
 			psuEn::reset();
 			fanEn::reset();
 		}
 		enabled = en;
-		constantVoltage = false;
-
 	}
 
 	void setCurrent(float current) {

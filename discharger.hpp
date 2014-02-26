@@ -65,6 +65,7 @@ public:
 		}
 		if(chkVoltage.isExpired()) {
 			if(battery.getVoltage() < cutoffVoltage) {
+				complete = true;
 				enable(false);
 			}
 		}
@@ -83,6 +84,17 @@ public:
 		dischargerEn::set(en);
 		fanEn::set(en);
 		DAC::setValue(0);
+		enabled = en;
+		if(en)
+			complete = false;
+	}
+
+	bool isEnabled() {
+		return enabled;
+	}
+
+	bool isDischargeComplete() {
+		return complete;
 	}
 
 	void setOutput(float currentA) {
@@ -100,9 +112,14 @@ public:
 		return temperature.readTemperature();
 	}
 
+	uint8_t dischargeCurrent = 40;
+
 private:
 	SMT160<tempPwm> temperature;
 	Average<float, 3000> current;
+
+	bool complete;
+	bool enabled;
 
 	float cutoffVoltage = 2.4;
 	float calibrationCoefficient = 0;

@@ -45,7 +45,7 @@ public:
 	GlitchFilter medianFiltcurrent;
 	GlitchFilter medianFiltvoltage;
 
-	IIRFilter<float, 100> voltageFiltered;
+	IIRFilter<float, 120> voltageFiltered;
 	IIRFilter<float, 25> currentFiltered;
 	//Average<float, 500> currentFiltered;
 	//Average<float, 3000> voltageFiltered;

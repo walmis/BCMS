@@ -199,24 +199,29 @@ protected:
 			buttons.update(buttonsNibble::read());
 		}
 
-		if(buttons.isPressed(BUTTON_LEFT)) {
-			//XPCC_LOG_DEBUG .printf("dec %d\n", voltagePot.getValue());
-		}
-		if(buttons.isPressed(BUTTON_RIGHT)) {
-			//XPCC_LOG_DEBUG .printf("inc %d\n", voltagePot.getValue());
-			manager.stop();
-		}
-
 		if(buttons.isPressed(BUTTON_UP)) {
-			static bool en = false;
-			//psuEn::set(en);
-			//en = !en;
-			//XPCC_LOG_DEBUG .printf("%d psu toggle\n", _psuEn::read());
+			manager.startCycle(CycleManager::CycleType::CHARGE);
+		}
+		if(buttons.isPressed(BUTTON_DOWN)) {
+			manager.startCycle(CycleManager::CycleType::DISCHARGE);
 		}
 
-		if(buttons.isPressed(BUTTON_DOWN)) {
-			manager.startCycle(CycleManager::DISCHARGE);
+		if(buttons.isPressedLong(BUTTON_LEFT)) {
+			NVIC_DeInit();
+
+			display.clear();
+			display.setCursor(0, 0);
+			display.printf("Bootloader\n");
+
+			usbConnPin::setOutput(false);
+			delay_ms(100);
+			LPC_WDT->WDFEED = 0x56;
 		}
+
+		if(buttons.isPressed(BUTTON_RIGHT)) {
+			manager.stopCycle();
+		}
+
 	}
 };
 
@@ -243,6 +248,19 @@ void sysTick() {
 	}
 }
 
+void loadConfiguration() {
+	XPCC_LOG_DEBUG .printf("Loading configuration\n");
+	fat::File f;
+	uint8_t buf[100];
+	if(f.open("/config.ini", "r") == FR_OK) {
+		XPCC_LOG_DEBUG .printf("File opened\n");
+		XPCC_LOG_DEBUG .printf("readLine %d\n", f.readLine(buf, 100));
+
+
+	}
+
+}
+
 #define CMD(i, name) (strcmp(argv[i], name) == 0)
 
 class CmdTerminal : public Terminal {
@@ -253,6 +271,15 @@ protected:
 	void handleCommand(uint8_t nargs, char* argv[]) {
 		//XPCC_LOG_DEBUG .printf("nargs %d %s\n", nargs, argv[0]);
 
+		if(CMD(0, "charge")) {
+			manager.startCycle(CycleManager::CycleType::CHARGE);
+		} else
+		if(CMD(0, "discharge")) {
+			manager.startCycle(CycleManager::CycleType::DISCHARGE);
+		} else
+		if(CMD(0, "stop")) {
+			manager.stopCycle();
+		} else
 		if(CMD(0, "charger") && CMD(1, "set")) {
 			uint16_t value = to_int(argv[2]);
 			if(value < 255) {
@@ -324,6 +351,9 @@ protected:
 				//serial << powf(battery.staticResistance, 2);
 			}
 		} else
+		if(CMD(0, "load")) {
+			loadConfiguration();
+		} else
 		if(CMD(0, "ls")) {
 			fat::FileInfo info;
 			fat::Directory dir;
@@ -337,12 +367,6 @@ protected:
 				}
 			}
 
-			int num;
-			sscanf("charge_123.csv", "charge_%d.csv", &num);
-
-			XPCC_LOG_DEBUG.printf("scan %d\n", num);
-
-
 			dir.close();
 		}
 	}
@@ -350,10 +374,8 @@ protected:
 
 
 CmdTerminal terminal(device);
-
-
 ButtonTask btnTask;
-//DataMeasurement dataTask;
+
 
 
 
@@ -374,23 +396,14 @@ void idleTask() {
 
 			if(sdCard.initialise()) {
 				fs.mount();
+
 			}
 
 		} else {
 			display << "SD";
 		}
-
-
-//		display.setCursor(0, 0);
-//		display.printf("%.3fV %.2fA ", battery.getVoltage(), battery.getCurrent());
-//
-//		display.setCursor(0, 1);
-//		display.printf("%.1fA %.1fC", discharger.getCurrent(),
-//				discharger.getTemperature());
-
 	}
 }
-
 
 
 int main() {
@@ -423,7 +436,6 @@ int main() {
 	device.connect();
 
 	NVIC_SetPriority(USB_IRQn, 16);
-
 
 	ADC::init(20000);
 	ADC::burstMode(true);

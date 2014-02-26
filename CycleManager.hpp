@@ -79,15 +79,14 @@ public:
 
 
 	void start() {
+		cyclesRemaining = doCycles;
 
-
-
-
+		startCycle(CHARGE);
 	}
 
-	void stop() {
+	void stopCycle() {
 		if(active) {
-
+			cycle = DISABLED;
 			active = false;
 
 			discharger.enable(false);
@@ -98,6 +97,7 @@ public:
 	}
 
 	void startCycle(CycleType type) {
+		stopCycle();
 
 		fat::FileInfo finfo;
 		if(!finfo.stat("/battery_data")) {
@@ -134,17 +134,14 @@ public:
 		}
 
 		if(type == CHARGE) {
-			charger.setCurrent(15);
-
+			charger.setCurrent(charger.chargeCurrent);
 			discharger.enable(false);
-
 			charger.enable(true);
 		} else
 		if(type == DISCHARGE) {
 			charger.enable(false);
-
 			discharger.enable(true);
-			discharger.setOutput(40.0);
+			discharger.setOutput(discharger.dischargeCurrent);
 		}
 
 
@@ -188,6 +185,21 @@ private:
 			}
 		}
 
+		if(cycle == DISCHARGE && discharger.isDischargeComplete()) {
+			//stopCycle cycle
+			stopCycle();
+
+			cyclesRemaining--;
+			if(cyclesRemaining) {
+				startCycle(CHARGE);
+			}
+		} else
+		if(cycle == CHARGE && charger.isChargeComplete()) {
+			stopCycle();
+
+			startCycle(DISCHARGE);
+		}
+
 		static PeriodicTimer<> displayRefresh(500);
 		if(displayRefresh.isExpired()) {
 
@@ -218,25 +230,8 @@ private:
 							(int)roundf(discharger.getTemperature()));
 
 				}
-
-
 			}
-
-
-
-			//		display.setCursor(0, 0);
-			//		display.printf("%.3fV %.2fA ", battery.getVoltage(), battery.getCurrent());
-			//
-			//		display.setCursor(0, 1);
-			//		display.printf("%.1fA %.1fC", discharger.getCurrent(),
-			//				discharger.getTemperature());
-
-
-
-
 		}
-
-
 	}
 
 
@@ -247,6 +242,9 @@ private:
 	CycleType cycle;
 	bool active;
 	int cycleNumber;
+
+	int cyclesRemaining = 0;
+	int doCycles = 30;
 
 	int getLastCycle(CycleType type) {
 		fat::Directory dir;
